@@ -1,9 +1,9 @@
 /* eslint-disable jsx-a11y/media-has-caption */
 import { useEffect } from 'react';
 import { useRecoilValue } from 'recoil';
+import { VolumeIcon, VolumeMuteIcon, Spinner } from '@librechat/client';
 import type { TMessageAudio } from '~/common';
 import { useLocalize, useTTSBrowser, useTTSExternal } from '~/hooks';
-import { VolumeIcon, VolumeMuteIcon, Spinner } from '~/components';
 import { logger } from '~/utils';
 import store from '~/store';
 
