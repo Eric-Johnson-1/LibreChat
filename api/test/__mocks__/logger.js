@@ -1,5 +1,13 @@
 jest.mock('winston', () => {
-  const mockFormatFunction = jest.fn((fn) => fn);
+  // Real `winston.format(fn)` returns a Format constructor whose instances
+  // expose a `.transform(info, opts)` method that winston's pipeline calls.
+  // The previous mock `(fn) => fn` collapsed this — `parsers.redactFormat()`
+  // (called at @librechat/data-schemas dist module-load) ended up invoking
+  // the inner transform fn with no `info` argument, throwing on `info.level`.
+  // Returning a thunk that yields `{ transform: fn }` matches real winston's
+  // shape just enough that module-load completes cleanly; the inner fn is
+  // only ever invoked by winston's pipeline (never at load time).
+  const mockFormatFunction = jest.fn((fn) => () => ({ transform: fn }));
 
   mockFormatFunction.colorize = jest.fn();
   mockFormatFunction.combine = jest.fn();
@@ -41,23 +49,12 @@ jest.mock('winston-daily-rotate-file', () => {
 });
 
 jest.mock('~/config', () => {
-  const actualModule = jest.requireActual('~/config');
   return {
-    sendEvent: actualModule.sendEvent,
-    createAxiosInstance: actualModule.createAxiosInstance,
     logger: {
       info: jest.fn(),
       warn: jest.fn(),
       debug: jest.fn(),
       error: jest.fn(),
     },
-  };
-});
-
-jest.mock('~/config/parsers', () => {
-  return {
-    redactMessage: jest.fn(),
-    redactFormat: jest.fn(),
-    debugTraverse: jest.fn(),
   };
 });

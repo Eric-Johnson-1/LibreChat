@@ -1,8 +1,8 @@
 import '@testing-library/jest-dom/extend-expect';
 import { fireEvent, render, screen } from '@testing-library/react';
-import { Panel } from '~/common/types';
 import VersionContent from '../VersionContent';
 import VersionPanel from '../VersionPanel';
+import { Panel } from '~/common/types';
 
 const mockAgentData = {
   name: 'Test Agent',
@@ -10,31 +10,39 @@ const mockAgentData = {
   instructions: 'Test Instructions',
   tools: ['tool1', 'tool2'],
   capabilities: ['capability1', 'capability2'],
-  versions: [
-    {
-      name: 'Version 1',
-      description: 'Description 1',
-      instructions: 'Instructions 1',
-      tools: ['tool1'],
-      capabilities: ['capability1'],
-      createdAt: '2023-01-01T00:00:00Z',
-      updatedAt: '2023-01-01T00:00:00Z',
-    },
-    {
-      name: 'Version 2',
-      description: 'Description 2',
-      instructions: 'Instructions 2',
-      tools: ['tool1', 'tool2'],
-      capabilities: ['capability1', 'capability2'],
-      createdAt: '2023-01-02T00:00:00Z',
-      updatedAt: '2023-01-02T00:00:00Z',
-    },
-  ],
+  edges: [{ from: 'agent-123', to: 'agent-specialist', edgeType: 'handoff' }],
 };
 
+const mockVersions = [
+  {
+    name: 'Version 1',
+    description: 'Description 1',
+    instructions: 'Instructions 1',
+    tools: ['tool1'],
+    capabilities: ['capability1'],
+    createdAt: '2023-01-01T00:00:00Z',
+    updatedAt: '2023-01-01T00:00:00Z',
+  },
+  {
+    name: 'Version 2',
+    description: 'Description 2',
+    instructions: 'Instructions 2',
+    tools: ['tool1', 'tool2'],
+    capabilities: ['capability1', 'capability2'],
+    createdAt: '2023-01-02T00:00:00Z',
+    updatedAt: '2023-01-02T00:00:00Z',
+  },
+];
+
 jest.mock('~/data-provider', () => ({
-  useGetAgentByIdQuery: jest.fn(() => ({
+  useGetExpandedAgentByIdQuery: jest.fn(() => ({
     data: mockAgentData,
+    isLoading: false,
+    error: null,
+    refetch: jest.fn(),
+  })),
+  useGetAgentVersionsQuery: jest.fn(() => ({
+    data: mockVersions,
     isLoading: false,
     error: null,
     refetch: jest.fn(),
@@ -55,27 +63,47 @@ jest.mock('~/hooks', () => ({
   useToast: jest.fn(() => ({ showToast: jest.fn() })),
 }));
 
+// Mock the AgentPanelContext
+jest.mock('~/Providers/AgentPanelContext', () => ({
+  ...jest.requireActual('~/Providers/AgentPanelContext'),
+  useAgentPanelContext: jest.fn(),
+}));
+
 describe('VersionPanel', () => {
   const mockSetActivePanel = jest.fn();
-  const defaultProps = {
-    agentsConfig: null,
-    setActivePanel: mockSetActivePanel,
-    selectedAgentId: 'agent-123',
-  };
-  const mockUseGetAgentByIdQuery = jest.requireMock('~/data-provider').useGetAgentByIdQuery;
+  const mockUseAgentPanelContext = jest.requireMock(
+    '~/Providers/AgentPanelContext',
+  ).useAgentPanelContext;
+
+  const mockUseGetExpandedAgentByIdQuery =
+    jest.requireMock('~/data-provider').useGetExpandedAgentByIdQuery;
+  const mockUseGetAgentVersionsQuery = jest.requireMock('~/data-provider').useGetAgentVersionsQuery;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockUseGetAgentByIdQuery.mockReturnValue({
+    mockUseGetExpandedAgentByIdQuery.mockReturnValue({
       data: mockAgentData,
       isLoading: false,
       error: null,
       refetch: jest.fn(),
     });
+    mockUseGetAgentVersionsQuery.mockReturnValue({
+      data: mockVersions,
+      isLoading: false,
+      error: null,
+      refetch: jest.fn(),
+    });
+
+    // Set up the default context mock
+    mockUseAgentPanelContext.mockReturnValue({
+      setActivePanel: mockSetActivePanel,
+      agent_id: 'agent-123',
+      activePanel: Panel.version,
+    });
   });
 
   test('renders panel UI and handles navigation', () => {
-    render(<VersionPanel {...defaultProps} />);
+    render(<VersionPanel />);
     expect(screen.getByText('com_ui_agent_version_history')).toBeInTheDocument();
     expect(screen.getByTestId('version-content')).toBeInTheDocument();
 
@@ -84,7 +112,7 @@ describe('VersionPanel', () => {
   });
 
   test('VersionContent receives correct props', () => {
-    render(<VersionPanel {...defaultProps} />);
+    render(<VersionPanel />);
     expect(VersionContent).toHaveBeenCalledWith(
       expect.objectContaining({
         selectedAgentId: 'agent-123',
@@ -101,19 +129,37 @@ describe('VersionPanel', () => {
   });
 
   test('handles data state variations', () => {
-    render(<VersionPanel {...defaultProps} selectedAgentId="" />);
+    // Test with empty agent_id
+    mockUseAgentPanelContext.mockReturnValueOnce({
+      setActivePanel: mockSetActivePanel,
+      agent_id: '',
+      activePanel: Panel.version,
+    });
+    render(<VersionPanel />);
     expect(VersionContent).toHaveBeenCalledWith(
       expect.objectContaining({ selectedAgentId: '' }),
       expect.anything(),
     );
 
-    mockUseGetAgentByIdQuery.mockReturnValueOnce({
+    // Test with null data
+    mockUseGetExpandedAgentByIdQuery.mockReturnValueOnce({
       data: null,
       isLoading: false,
       error: null,
       refetch: jest.fn(),
     });
-    render(<VersionPanel {...defaultProps} />);
+    mockUseGetAgentVersionsQuery.mockReturnValueOnce({
+      data: null,
+      isLoading: false,
+      error: null,
+      refetch: jest.fn(),
+    });
+    mockUseAgentPanelContext.mockReturnValueOnce({
+      setActivePanel: mockSetActivePanel,
+      agent_id: 'agent-123',
+      activePanel: Panel.version,
+    });
+    render(<VersionPanel />);
     expect(VersionContent).toHaveBeenCalledWith(
       expect.objectContaining({
         versionContext: expect.objectContaining({
@@ -125,13 +171,14 @@ describe('VersionPanel', () => {
       expect.anything(),
     );
 
-    mockUseGetAgentByIdQuery.mockReturnValueOnce({
-      data: { ...mockAgentData, versions: undefined },
+    // 3. versions is undefined
+    mockUseGetAgentVersionsQuery.mockReturnValueOnce({
+      data: undefined,
       isLoading: false,
       error: null,
       refetch: jest.fn(),
     });
-    render(<VersionPanel {...defaultProps} />);
+    render(<VersionPanel />);
     expect(VersionContent).toHaveBeenCalledWith(
       expect.objectContaining({
         versionContext: expect.objectContaining({ versions: [] }),
@@ -139,26 +186,28 @@ describe('VersionPanel', () => {
       expect.anything(),
     );
 
-    mockUseGetAgentByIdQuery.mockReturnValueOnce({
+    // 4. loading state
+    mockUseGetAgentVersionsQuery.mockReturnValueOnce({
       data: null,
       isLoading: true,
       error: null,
       refetch: jest.fn(),
     });
-    render(<VersionPanel {...defaultProps} />);
+    render(<VersionPanel />);
     expect(VersionContent).toHaveBeenCalledWith(
       expect.objectContaining({ isLoading: true }),
       expect.anything(),
     );
 
+    // 5. error state
     const testError = new Error('Test error');
-    mockUseGetAgentByIdQuery.mockReturnValueOnce({
+    mockUseGetAgentVersionsQuery.mockReturnValueOnce({
       data: null,
       isLoading: false,
       error: testError,
       refetch: jest.fn(),
     });
-    render(<VersionPanel {...defaultProps} />);
+    render(<VersionPanel />);
     expect(VersionContent).toHaveBeenCalledWith(
       expect.objectContaining({ error: testError }),
       expect.anything(),
@@ -166,14 +215,20 @@ describe('VersionPanel', () => {
   });
 
   test('memoizes agent data correctly', () => {
-    mockUseGetAgentByIdQuery.mockReturnValueOnce({
+    mockUseGetExpandedAgentByIdQuery.mockReturnValueOnce({
       data: mockAgentData,
       isLoading: false,
       error: null,
       refetch: jest.fn(),
     });
+    mockUseGetAgentVersionsQuery.mockReturnValueOnce({
+      data: mockVersions,
+      isLoading: false,
+      error: null,
+      refetch: jest.fn(),
+    });
 
-    render(<VersionPanel {...defaultProps} />);
+    render(<VersionPanel />);
     expect(VersionContent).toHaveBeenCalledWith(
       expect.objectContaining({
         versionContext: expect.objectContaining({
@@ -181,6 +236,7 @@ describe('VersionPanel', () => {
             name: 'Test Agent',
             description: 'Test Description',
             instructions: 'Test Instructions',
+            edges: [{ from: 'agent-123', to: 'agent-specialist', edgeType: 'handoff' }],
           }),
           versions: expect.arrayContaining([
             expect.objectContaining({ name: 'Version 2' }),
